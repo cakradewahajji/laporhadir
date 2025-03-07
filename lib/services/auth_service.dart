@@ -5,7 +5,10 @@ class AuthService {
   final Dio _dio = Dio(
     BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ApiConfig.apiKey,
+      },
     ),
   );
 

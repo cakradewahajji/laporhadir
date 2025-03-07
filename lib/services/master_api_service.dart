@@ -5,7 +5,7 @@ class MasterApiService {
   static final Dio _dio = Dio();
 
   static Future<List<dynamic>> getMasterData() async {
-    final String url = '${ApiConfig.masterUrl}/master-data';
+    final String url = '${ApiConfig.baseUrl}/master-data';
     try {
       final response = await _dio.get(url);
       // Jika response berhasil, response.data biasanya sudah ter-decode
