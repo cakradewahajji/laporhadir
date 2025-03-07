@@ -3,9 +3,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class ApiConfig {
   static String get baseUrl {
     if (dotenv.isInitialized) {
-      return dotenv.env['API_BASE_URL'] ?? 'https://fallback.com';
+      return dotenv.env['API_BASE_URL'] ?? 'https://api.bssn.go.id/';
     } else {
-      return 'https://fallback.com';
+      return 'https://api.bssn.go.id/';
     }
   }
 
