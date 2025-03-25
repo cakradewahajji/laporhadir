@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class OTPScreen extends StatefulWidget {
   const OTPScreen({Key? key}) : super(key: key);
@@ -16,11 +18,11 @@ class _OTPScreenState extends State<OTPScreen>
 
   Timer? _timer;
   int _secondsRemaining = 120;
+  final TextEditingController _otpController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -50,9 +52,9 @@ class _OTPScreenState extends State<OTPScreen>
     });
   }
 
-  void _resendCode() {
-    // Logika pemanggilan API untuk mengirim ulang OTP bisa ditambahkan di sini.
-    // Setelah itu, reset timer kembali ke 120 detik.
+  // Panggil method resend di AuthProvider dan reset timer
+  void _resendCode(AuthProvider auth) async {
+    await auth.resend();
     _startTimer();
   }
 
@@ -60,6 +62,7 @@ class _OTPScreenState extends State<OTPScreen>
   void dispose() {
     _controller.dispose();
     _timer?.cancel();
+    _otpController.dispose();
     super.dispose();
   }
 
@@ -67,9 +70,11 @@ class _OTPScreenState extends State<OTPScreen>
   Widget build(BuildContext context) {
     // Deteksi apakah keyboard aktif
     final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-    // Atur tinggi ilustrasi (collapse saat keyboard aktif)
     final double illustrationHeight =
         isKeyboardOpen ? 0 : MediaQuery.of(context).size.height * 0.4;
+
+    // Akses AuthProvider
+    final auth = Provider.of<AuthProvider>(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -78,11 +83,10 @@ class _OTPScreenState extends State<OTPScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // Ilustrasi dengan AnimatedContainer untuk transisi halus
+              // Ilustrasi (collapse saat keyboard aktif)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 height: illustrationHeight,
-                // padding: const EdgeInsets.all(16.0),
                 width: double.infinity,
                 child:
                     illustrationHeight > 0
@@ -129,14 +133,14 @@ class _OTPScreenState extends State<OTPScreen>
                             ),
                           ),
                           const SizedBox(height: 16),
-                          // Field input OTP (hanya angka, maksimal 6 digit, dengan placeholder underscore)
+                          // Field input OTP
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: TextField(
-                              // autofocus: true,
+                              controller: _otpController,
                               keyboardType: TextInputType.number,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
@@ -145,7 +149,7 @@ class _OTPScreenState extends State<OTPScreen>
                               decoration: InputDecoration(
                                 prefixIcon: const Icon(Icons.message),
                                 hintText: '______',
-                                counterText: '', // Menghilangkan teks counter
+                                counterText: '', // Hilangkan counter
                                 border: InputBorder.none,
                                 contentPadding: const EdgeInsets.all(16),
                               ),
@@ -165,7 +169,9 @@ class _OTPScreenState extends State<OTPScreen>
                               ),
                               TextButton(
                                 onPressed:
-                                    _secondsRemaining == 0 ? _resendCode : null,
+                                    _secondsRemaining == 0
+                                        ? () => _resendCode(auth)
+                                        : null,
                                 child: const Text(
                                   'Resend Code',
                                   style: TextStyle(
@@ -177,6 +183,18 @@ class _OTPScreenState extends State<OTPScreen>
                             ],
                           ),
                           const SizedBox(height: 16),
+                          // Tampilkan error jika ada
+                          if (auth.error != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Text(
+                                auth.error!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
                           // Tombol Verifikasi OTP
                           SizedBox(
                             width: double.infinity,
@@ -188,18 +206,32 @@ class _OTPScreenState extends State<OTPScreen>
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              onPressed: () {
-                                // Panggil API untuk verifikasi OTP, jika sukses pindah ke dashboard
-                                Navigator.pushNamed(context, '/dashboard');
-                              },
-                              child: const Text(
-                                'Verifikasi',
-                                style: TextStyle(
-                                  color: Color(0xFF1F2452),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              onPressed:
+                                  auth.loading
+                                      ? null
+                                      : () {
+                                        // Panggil method verify di AuthProvider
+                                        auth.verify(
+                                          _otpController.text.trim(),
+                                          context,
+                                        );
+                                      },
+                              child:
+                                  auth.loading
+                                      ? const CircularProgressIndicator(
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Color(0xFF1F2452),
+                                            ),
+                                      )
+                                      : const Text(
+                                        'Verifikasi',
+                                        style: TextStyle(
+                                          color: Color(0xFF1F2452),
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                             ),
                           ),
                           const SizedBox(height: 16),

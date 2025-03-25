@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'done_attendance_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
+import 'done_attendance_screen.dart';
+import '../models/kehadiran_model.dart';
+import '../providers/auth_provider.dart';
+import '../providers/user_provider.dart';
+import '../providers/kehadiran_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -12,97 +17,62 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
-  final String employeeName = "Cakradewa Hajji Perwira";
-  // Dummy data absensi dengan field tanggal
-  final List<Map<String, String>> attendanceList = [
-    {
-      "status": "WFO",
-      "jamMasuk": "07:30",
-      "jamPulang": "-",
-      "tanggal": "Jumat, 07 Maret 2024",
-    },
-    {
-      "status": "WFH",
-      "jamMasuk": "07:45",
-      "jamPulang": "16:15",
-      "tanggal": "Kamis, 06 Maret 2025",
-    },
-    {
-      "status": "WFH",
-      "jamMasuk": "07:50",
-      "jamPulang": "16:00",
-      "tanggal": "Rabu, 05 Maret 2025",
-    },
-    {
-      "status": "WFH",
-      "jamMasuk": "07:30",
-      "jamPulang": "15:59",
-      "tanggal": "Selasa, 04 Maret 2025",
-    },
-    {
-      "status": "WFO",
-      "jamMasuk": "07:45",
-      "jamPulang": "16:10",
-      "tanggal": "Senin, 03 Maret 2025",
-    },
-    {
-      "status": "WFO",
-      "jamMasuk": "07:45",
-      "jamPulang": "-",
-      "tanggal": "Jumat, 29 Februari 2025",
-    },
-    {
-      "status": "Sakit",
-      "jamMasuk": "-",
-      "jamPulang": "-",
-      "tanggal": "Kamis, 28 Februari 2025",
-    },
-    {
-      "status": "Cuti",
-      "jamMasuk": "-",
-      "jamPulang": "-",
-      "tanggal": "Rabu, 27 Februari 2025",
-    },
-    {
-      "status": "Dinas",
-      "jamMasuk": "-",
-      "jamPulang": "-",
-      "tanggal": "Selasa, 26 Februari 2025",
-    },
-  ];
-
   late TabController _tabController;
+  bool _hasSyncedUser = false;
 
   @override
   void initState() {
     super.initState();
     _initializeLocale();
     _tabController = TabController(length: 4, vsync: this);
+
+    // Panggil fetchKehadiran setelah frame pertama agar context sudah tersedia.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final kehadiranProv = Provider.of<KehadiranProvider>(
+        context,
+        listen: false,
+      );
+      if (auth.isAuthenticated) {
+        kehadiranProv.fetchKehadiran(auth.token);
+      }
+    });
   }
 
   void _initializeLocale() async {
     await initializeDateFormatting('id_ID', null);
     Intl.defaultLocale = 'id_ID';
-    setState(() {}); // Update tampilan setelah inisialisasi locale
+    setState(() {});
   }
 
-  // Parsing waktu "HH:mm" menjadi menit
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = Provider.of<UserProvider>(context, listen: false);
+    if (auth.isAuthenticated && !_hasSyncedUser) {
+      _hasSyncedUser = true;
+      print("Memanggil synchronizeUser dengan token: ${auth.token}");
+      user.synchronizeUser(auth.token).then((_) {
+        print("Selesai synchronizeUser.");
+        setState(() {});
+      });
+    }
+  }
+
+  // Helper: Konversi string waktu "HH:mm:ss" ke menit
   int parseTime(String time) {
-    if (time == "-") return -1;
+    if (time == "-" || time.isEmpty) return -1;
     final parts = time.split(":");
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
   }
 
-  // Evaluasi kondisi ekstra:
-  // "Telat": jika masuk > 07:45,
-  // "Mendahului": jika (masuk == 07:30 dan pulang tidak tepat 16:00)
-  //              atau (masuk == 07:45 dan pulang < 16:15),
-  // "Belum Absen Pulang": jika WFH/WFA/WFO dan jamPulang masih "-"
+  // Helper: Menghitung status tambahan (misalnya, Telat, Mendahului, dll)
   String computeExtraStatus(String status, String jamMasuk, String jamPulang) {
     if (status == "Dinas" || status == "Cuti" || status == "Sakit") return "";
-    if (jamMasuk == "-") return "";
+    if (jamMasuk == "-" || jamMasuk.isEmpty) return "";
     if ((status == "WFH" || status == "WFA" || status == "WFO") &&
-        jamPulang == "-") {
+        (jamPulang == "-" || jamPulang.isEmpty)) {
       return "Belum Absen Pulang";
     }
     final int masuk = parseTime(jamMasuk);
@@ -117,77 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return "";
   }
 
-  // Warna card berdasarkan kondisi
-  Color getAttendanceCardColor(
-    String status,
-    String jamMasuk,
-    String jamPulang,
-  ) {
-    final String extra = computeExtraStatus(status, jamMasuk, jamPulang);
-    if (extra == "Telat" || extra == "Mendahului") {
-      return Colors.redAccent.withOpacity(0.7);
-    } else if (extra == "Belum Absen Pulang") {
-      return Colors.lightBlueAccent.withOpacity(0.7);
-    } else if (status == "Sakit" || status == "Cuti" || status == "Dinas") {
-      return const Color.fromARGB(255, 102, 106, 141).withOpacity(0.9);
-    } else {
-      return Colors.yellow[300]!.withOpacity(0.7);
-    }
-  }
-
-  // Fungsi untuk menentukan ikon utama berdasarkan status
-  IconData getStatusIcon(String status) {
-    if (status == "WFH") return Icons.home;
-    if (status == "WFO") return Icons.work;
-    if (status == "Sakit") return Icons.local_hospital;
-    if (status == "Cuti") return Icons.beach_access;
-    if (status == "Dinas") return Icons.directions_bus;
-    return Icons.info;
-  }
-
-  // Konversi string tanggal ke DateTime menggunakan locale id_ID
-  DateTime parseTanggal(String tanggalStr) {
-    final DateFormat formatter = DateFormat('EEEE, d MMMM yyyy', 'id_ID');
-    return formatter.parse(tanggalStr);
-  }
-
-  // Filter data berdasarkan tab
-  List<Map<String, String>> filterData(int tabIndex) {
-    final sortedList = List<Map<String, String>>.from(attendanceList);
-    sortedList.sort((a, b) {
-      final dateA = parseTanggal(a["tanggal"]!);
-      final dateB = parseTanggal(b["tanggal"]!);
-      return dateB.compareTo(dateA);
-    });
-    switch (tabIndex) {
-      case 0:
-        return sortedList;
-      case 1:
-        return sortedList.where((item) {
-          final status = item["status"] ?? "";
-          final jamPulang = item["jamPulang"] ?? "-";
-          return (status == "WFH" || status == "WFA" || status == "WFO") &&
-              jamPulang == "-";
-        }).toList();
-      case 2:
-        return sortedList.where((item) {
-          final status = item["status"] ?? "";
-          final jamMasuk = item["jamMasuk"] ?? "-";
-          final jamPulang = item["jamPulang"] ?? "-";
-          final extra = computeExtraStatus(status, jamMasuk, jamPulang);
-          return extra == "Telat" || extra == "Mendahului";
-        }).toList();
-      case 3:
-        return sortedList.where((item) {
-          final status = item["status"] ?? "";
-          return status == "Sakit" || status == "Cuti" || status == "Dinas";
-        }).toList();
-      default:
-        return sortedList;
-    }
-  }
-
-  // Fungsi untuk menentukan label badge berdasarkan data
+  // Helper: Menghasilkan label badge berdasarkan status
   String _getBadgeLabel(String status, String jamMasuk, String jamPulang) {
     final extra = computeExtraStatus(status, jamMasuk, jamPulang);
     if (extra == "Belum Absen Pulang") return "In Progress";
@@ -197,7 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return "Selesai";
   }
 
-  // Fungsi untuk menentukan warna badge berdasarkan label
+  // Helper: Menghasilkan warna badge berdasarkan label
   Color _getBadgeColor(String label) {
     switch (label) {
       case "In Progress":
@@ -212,12 +112,87 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  // Helper: Mendapatkan ikon berdasarkan status
+  IconData getStatusIcon(String status) {
+    if (status == "WFH") return Icons.home;
+    if (status == "WFO") return Icons.work;
+    if (status == "Sakit") return Icons.local_hospital;
+    if (status == "Cuti") return Icons.beach_access;
+    if (status == "Dinas") return Icons.directions_bus;
+    return Icons.info;
+  }
+
+  // Helper: Format tanggal dari API (asumsi format "YYYY-MM-DD")
+  String formatTanggal(String tanggal) {
+    DateTime dateParsed = DateTime.tryParse(tanggal) ?? DateTime.now();
+    return DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(dateParsed);
+  }
+
+  // Filter data kehadiran berdasarkan tab menggunakan List<KehadiranModel>
+  List<KehadiranModel> filterData(List<KehadiranModel> data, int tabIndex) {
+    List<KehadiranModel> sortedList = List<KehadiranModel>.from(data);
+    sortedList.sort((a, b) {
+      DateTime dateA = DateTime.tryParse(a.tanggal) ?? DateTime.now();
+      DateTime dateB = DateTime.tryParse(b.tanggal) ?? DateTime.now();
+      return dateB.compareTo(dateA);
+    });
+    switch (tabIndex) {
+      case 0:
+        return sortedList;
+      case 1:
+        return sortedList.where((item) {
+          final status = item.tipe;
+          final jamPulang = item.jamPulang;
+          return ((status == "WFH" || status == "WFA" || status == "WFO") &&
+              (jamPulang == "-" || jamPulang.isEmpty));
+        }).toList();
+      case 2:
+        return sortedList.where((item) {
+          final status = item.tipe;
+          final extra = computeExtraStatus(
+            status,
+            item.jamMasuk,
+            item.jamPulang,
+          );
+          return extra == "Telat" || extra == "Mendahului";
+        }).toList();
+      case 3:
+        return sortedList.where((item) {
+          final status = item.tipe;
+          return status == "Sakit" || status == "Cuti" || status == "Dinas";
+        }).toList();
+      default:
+        return sortedList;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Cek apakah hari ini sudah ada absensi
+    // Ambil data kehadiran dari provider
+    final kehadiranProv = Provider.of<KehadiranProvider>(context);
+    // Ambil data user untuk menampilkan full name
+    final userProvider = Provider.of<UserProvider>(context);
+    final String fullName =
+        userProvider.fullname ??
+        (userProvider.name.isNotEmpty ? userProvider.name : "User");
+
+    // Jika data kehadiran sedang loading atau terjadi error, tampilkan indikator
+    if (kehadiranProv.loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (kehadiranProv.errorMessage != null) {
+      return Scaffold(
+        body: Center(child: Text('Error: ${kehadiranProv.errorMessage}')),
+      );
+    }
+
+    final List<KehadiranModel> kehadiranList = kehadiranProv.kehadiranList;
+
+    // Cek apakah ada kehadiran pada hari ini (menggunakan tanggal API yang berbentuk "YYYY-MM-DD")
     final DateTime today = DateTime.now();
-    final bool attendanceExistsForToday = attendanceList.any((record) {
-      final DateTime recordDate = parseTanggal(record["tanggal"]!);
+    final bool attendanceExistsForToday = kehadiranList.any((item) {
+      final DateTime recordDate =
+          DateTime.tryParse(item.tanggal) ?? DateTime.now();
       return recordDate.day == today.day &&
           recordDate.month == today.month &&
           recordDate.year == today.year;
@@ -228,9 +203,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Scaffold(
         backgroundColor: const Color(0xFFEFEFEF),
         appBar: AppBar(
-          title: const Text(
-            "LAPOR HADIR",
-            style: TextStyle(color: Colors.white),
+          title: Text(
+            "LAPOR HADIR - $fullName",
+            style: const TextStyle(color: Colors.white),
           ),
           centerTitle: false,
           automaticallyImplyLeading: false,
@@ -252,7 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               padding: const EdgeInsets.only(right: 16.0),
               child: Center(
                 child: Text(
-                  "Welcome,\n$employeeName",
+                  "Welcome,\n$fullName",
                   textAlign: TextAlign.right,
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
@@ -260,8 +235,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ],
         ),
-
-        // Jika sudah ada absensi hari ini, tidak tampilkan tombol "Tambah Absen"
         bottomNavigationBar:
             attendanceExistsForToday
                 ? null
@@ -298,39 +271,39 @@ class _DashboardScreenState extends State<DashboardScreen>
         body: TabBarView(
           controller: _tabController,
           children: [
-            buildList(0), // All
-            buildList(1), // Progress
-            buildList(2), // Terlambat
-            buildList(3), // Lainnya
+            buildList(0, kehadiranList),
+            buildList(1, kehadiranList),
+            buildList(2, kehadiranList),
+            buildList(3, kehadiranList),
           ],
         ),
       ),
     );
   }
 
-  Widget buildList(int tabIndex) {
-    final data = filterData(tabIndex);
+  Widget buildList(int tabIndex, List<KehadiranModel> data) {
+    List<KehadiranModel> filtered = filterData(data, tabIndex);
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: data.length,
+      itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final item = data[index];
-        final String status = item["status"] ?? "";
-        final String jamMasuk = item["jamMasuk"] ?? "-";
-        final String jamPulang = item["jamPulang"] ?? "-";
-        final String tanggal = item["tanggal"] ?? "-";
+        final item = filtered[index];
+        final String status = item.tipe;
+        final String jamMasuk = item.jamMasuk;
+        final String jamPulang = item.jamPulang;
+        final String tanggal = item.tanggal;
+        final String keteranganMasuk = item.keteranganMasuk;
+        final String keteranganPulang = item.keteranganPulang;
         final String badgeLabel = _getBadgeLabel(status, jamMasuk, jamPulang);
         final Color badgeColor = _getBadgeColor(badgeLabel);
 
-        // Format tanggal menggunakan DateFormat (dalam bahasa Indonesia)
         String dateTimeText = DateFormat(
           'EEEE, d MMMM yyyy',
           'id_ID',
-        ).format(parseTanggal(tanggal));
+        ).format(DateTime.tryParse(tanggal) ?? DateTime.now());
 
         return GestureDetector(
           onTap: () {
-            // Navigasi ke halaman DoneAttendanceScreen dengan parameter
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -338,9 +311,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                     (context) => DoneAttendanceScreen(
                       jamMasuk: jamMasuk,
                       jamPulang: jamPulang,
-                      locationDatang: "Office Main Entrance",
-                      locationPulang: "Office Exit",
-                      tanggal: tanggal,
+                      locationDatang:
+                          item.latitudeMasuk == 0
+                              ? "N/A"
+                              : "Latitude: ${item.latitudeMasuk}, Longitude: ${item.longitudeMasuk}",
+                      locationPulang:
+                          item.latitudePulang == 0
+                              ? "N/A"
+                              : "Latitude: ${item.latitudePulang}, Longitude: ${item.longitudePulang}",
+                      keteranganMasuk: item.keteranganMasuk,
+                      keteranganPulang: item.keteranganPulang,
+                      tanggal: DateFormat(
+                        'EEEE, d MMMM yyyy',
+                        'id_ID',
+                      ).format(DateTime.tryParse(tanggal) ?? DateTime.now()),
                     ),
               ),
             );
@@ -351,7 +335,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              // Border kiri dengan warna sesuai badge
               border: Border(left: BorderSide(color: badgeColor, width: 10)),
               boxShadow: const [
                 BoxShadow(
@@ -364,7 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Row pertama: ikon status, title, dan badge
+                // Baris pertama: ikon status, title, dan badge
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -376,9 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(width: 16),
                     Expanded(
                       child: Text(
-                        status == "WFH" || status == "WFA" || status == "WFO"
-                            ? status
-                            : status,
+                        status,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -406,7 +387,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ],
                 ),
                 const SizedBox(height: 8),
-                // Row kedua: detail jam masuk & pulang
                 Row(
                   children: [
                     const Icon(Icons.access_time, size: 16, color: Colors.grey),
@@ -418,7 +398,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ],
                 ),
                 const SizedBox(height: 4),
-                // Row ketiga: tanggal dengan ikon kalender
                 Row(
                   children: [
                     const Icon(

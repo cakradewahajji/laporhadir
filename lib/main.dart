@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/otp_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/add_attendance_screen.dart';
 import 'providers/auth_provider.dart';
+import 'providers/user_provider.dart';
+import 'providers/kehadiran_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,8 @@ Future<void> main() async {
         ChangeNotifierProvider(
           create: (_) => AuthProvider()..mountLocalStorage(),
         ),
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => KehadiranProvider()),
       ],
       child: MyApp(),
     ),

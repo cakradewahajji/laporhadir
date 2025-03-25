@@ -7,6 +7,8 @@ class DoneAttendanceScreen extends StatefulWidget {
   final String jamPulang;
   final String locationDatang;
   final String locationPulang;
+  final String keteranganMasuk; // Rencana Kerja
+  final String keteranganPulang; // Pekerjaan Hari Ini
 
   const DoneAttendanceScreen({
     Key? key,
@@ -15,6 +17,8 @@ class DoneAttendanceScreen extends StatefulWidget {
     required this.jamPulang,
     required this.locationDatang,
     required this.locationPulang,
+    required this.keteranganMasuk,
+    required this.keteranganPulang,
   }) : super(key: key);
 
   @override
@@ -22,28 +26,39 @@ class DoneAttendanceScreen extends StatefulWidget {
 }
 
 class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
-  final TextEditingController _workController = TextEditingController();
+  // Controller untuk masing-masing text field
+  final TextEditingController _rencanaController = TextEditingController();
+  final TextEditingController _pekerjaanController = TextEditingController();
+
   DateTime? _networkTime;
   bool _buttonEnabled = false;
 
   @override
   void initState() {
     super.initState();
+    // Inisialisasi controller berdasarkan nilai yang sudah ada
+    if (widget.keteranganMasuk.trim() != "-" &&
+        widget.keteranganMasuk.isNotEmpty) {
+      _rencanaController.text = widget.keteranganMasuk;
+    }
+    if (widget.keteranganPulang.trim() != "-" &&
+        widget.keteranganPulang.isNotEmpty) {
+      _pekerjaanController.text = widget.keteranganPulang;
+    }
     _fetchNetworkTime();
   }
 
   @override
   void dispose() {
-    Intl.defaultLocale = 'id_ID';
-    _workController.dispose();
+    _rencanaController.dispose();
+    _pekerjaanController.dispose();
     super.dispose();
   }
 
-  // Simulasi pengambilan waktu dari server (bukan waktu handphone)
+  // Simulasi pengambilan waktu dari server (ganti dengan API call jika perlu)
   Future<void> _fetchNetworkTime() async {
     await Future.delayed(const Duration(seconds: 1));
-    DateTime nt =
-        DateTime.now(); // Gantikan dengan pemanggilan API untuk mendapatkan waktu server
+    DateTime nt = DateTime.now(); // Ganti dengan pemanggilan API jika perlu
     setState(() {
       _networkTime = nt;
       _buttonEnabled = _checkButtonEnabled(nt);
@@ -52,7 +67,7 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
 
   // Cek apakah tombol absen pulang boleh aktif berdasarkan waktu server
   bool _checkButtonEnabled(DateTime currentTime) {
-    // Misalnya: Senin-Kamis aktif jika waktu >= 16:00, Jumat >= 16:30
+    // Contoh logika: Senin-Kamis aktif jika waktu >= 16:00, Jumat >= 16:30
     if (currentTime.weekday >= 1 && currentTime.weekday <= 4) {
       if (currentTime.hour > 16 ||
           (currentTime.hour == 16 && currentTime.minute >= 0)) {
@@ -93,37 +108,40 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Cek jika sudah absen pulang: jika jamPulang tidak "-" dan tidak kosong
+    // Definisikan kondisi untuk absensi
     final bool alreadyAbsenPulang =
         widget.jamPulang.trim() != "-" && widget.jamPulang.isNotEmpty;
-    // Cek untuk status cuti, ijin, sakit, atau dinas (diasumsikan jika jamMasuk bernilai "-" dan tidak kosong)
     final bool absenIjin =
         widget.jamMasuk.trim() == "-" && widget.jamMasuk.isNotEmpty;
-    // Jika salah satu kondisi terpenuhi, maka disable text area dan tombol absen pulang.
     final bool disableAbsen = alreadyAbsenPulang || absenIjin;
 
-    // Jika waktu server belum tersedia, tampilkan loading.
     if (_networkTime == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Parse tanggal attendance yang dioper
+    // Parse tanggal attendance (diasumsikan format "EEEE, dd MMMM yyyy")
     final DateTime attendanceDate = DateFormat(
       'EEEE, dd MMMM yyyy',
       'id_ID',
     ).parse(widget.tanggal);
-
     final String formattedDate = DateFormat(
       'EEEE, d MMMM yyyy',
       'id_ID',
     ).format(attendanceDate);
+
     // Cek apakah hari pada waktu server sama dengan tanggal attendance
     final bool isSameDay =
         attendanceDate.year == _networkTime!.year &&
         attendanceDate.month == _networkTime!.month &&
         attendanceDate.day == _networkTime!.day;
-    // Jika hari berbeda, maka disable tombol dan text area.
     final bool disableDueToDifferentDay = !isSameDay;
+
+    // Tentukan apakah field rencana kerja dan pekerjaan hari ini editable
+    final bool rencanaEditable =
+        widget.keteranganMasuk.trim() == "-" || widget.keteranganMasuk.isEmpty;
+    final bool pekerjaanEditable =
+        widget.keteranganPulang.trim() == "-" ||
+        widget.keteranganPulang.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -139,7 +157,7 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Tampilkan tanggal attendance di atas
+            // Tampilkan tanggal attendance
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -294,22 +312,46 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // Text area untuk pekerjaan hari ini
+            // Field Rencana Kerja (keterangan masuk)
             Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                "Pekerjaan Hari Ini:",
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: const Text(
+                "Rencana Kerja:",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ),
             const SizedBox(height: 4),
             TextField(
-              controller: _workController,
+              controller: _rencanaController,
               maxLines: 5,
-              enabled: !(disableAbsen || disableDueToDifferentDay),
+              enabled:
+                  rencanaEditable &&
+                  !(disableAbsen || disableDueToDifferentDay),
+              decoration: InputDecoration(
+                hintText: "Ketik rencana kerja hari ini...",
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                fillColor: Colors.white,
+                filled: true,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Field Pekerjaan Hari Ini (keterangan pulang)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: const Text(
+                "Pekerjaan Hari Ini:",
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _pekerjaanController,
+              maxLines: 5,
+              enabled:
+                  pekerjaanEditable &&
+                  !(disableAbsen || disableDueToDifferentDay),
               decoration: InputDecoration(
                 hintText: "Ketik pekerjaan hari ini...",
                 border: OutlineInputBorder(
@@ -320,12 +362,12 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
               ),
             ),
             const Spacer(),
-            // Tombol Absen Pulang: nonaktif jika disableAbsen atau jika hari sudah berbeda
+            // Tombol Absen Pulang
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed:
-                    ((!(disableAbsen || disableDueToDifferentDay)) &&
+                    (!(disableAbsen || disableDueToDifferentDay) &&
                             _buttonEnabled)
                         ? _handleAbsenPulang
                         : null,
@@ -343,7 +385,7 @@ class _DoneAttendanceScreenState extends State<DoneAttendanceScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // Info waktu server (opsional)
+            // Info waktu server
             Text(
               "Waktu Server: ${_networkTime!.toLocal().toString().substring(0, 19)}",
               style: const TextStyle(fontSize: 12, color: Colors.grey),
